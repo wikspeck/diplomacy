@@ -1,0 +1,13 @@
+export type Terrain = 'plains' | 'forest' | 'mountains' | 'urban';
+export interface Country { id: string; name: string; short: string; color: string; capital: string; personality: string; objectives: string; aggression: number; treasury: number; manpower: number; relations: Record<string,number>; memory: string[]; plan: string; capitulated: boolean; surrender: number; }
+export interface Region { id:string; name:string; owner:string; controller:string; vp:number; terrain:Terrain; population:number; infrastructure:number; neighbors:string[]; seaNeighbors:string[]; location:[number,number]; supply:number; }
+export interface Army { id:string; country:string; region:string; strength:number; organization:number; morale:number; experience:number; supply:number; entrenchment:number; order:string; }
+export interface Treaty { a:string; b:string; type:'alliance'|'access'|'guarantee'|'ceasefire'; expires?:number; }
+export interface Message { id:string; from:string; to:string; type:string; text:string; region?:string; turn:number; status:'pending'|'accepted'|'rejected'|'delivered'; }
+export interface GameEvent { id:string; turn:number; type:string; text:string; region?:string; country?:string; details?:string; }
+export interface DecisionRecord { country:string; source:'llm'|'fallback'; explanation:string; error?:string; turn:number; }
+export interface Settings { model:string; llmCountries:string[]; callBudget:number; maxTokens:number; }
+export interface GameState { schema:1; seed:number; rng:number; turn:number; date:string; tension:number; countries:Record<string,Country>; regions:Record<string,Region>; armies:Army[]; wars:[string,string][]; treaties:Treaty[]; messages:Message[]; events:GameEvent[]; decisions:DecisionRecord[]; settings:Settings; usage:{calls:number; failed:number; inputTokens:number; outputTokens:number; estimatedTokens:number; cooldownUntil:number; status:string}; progress:null|{index:number; countries:string[]; decisions:Record<string,Decision>; calls:number}; nextId:number; }
+export interface DiplomaticAction { type:'message'|'propose_alliance'|'accept'|'reject'|'ultimatum'|'guarantee'|'request_access'|'declare_war'|'offer_peace'|'demand_territory'|'ceasefire'|'break_treaty'; target:string; message?:string; proposalId?:string; region?:string; }
+export interface MilitaryAction { type:'move'|'attack'|'defend'|'retreat'|'reinforce'|'entrench'|'merge'|'split'; armyId:string; targetRegion?:string; otherArmyId?:string; }
+export interface Decision { explanation:string; diplomaticActions:DiplomaticAction[]; militaryActions:MilitaryAction[]; economicActions:{type:'recruit';region:string;amount:number}[]; }
