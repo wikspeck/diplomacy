@@ -19,7 +19,7 @@ const original=JSON.parse(fs.readFileSync('public/data/world_1914.geojson','utf8
 const bounds=[[[-12,35],[46,35],[46,71],[-12,71],[-12,35]]];
 const regions=[],features=[],countryFeatures=[];
 for(const [owner,[name,sites]] of Object.entries(groups)){
- const found=original.features.filter(f=>f.properties.NAME===name || (owner==='rus' && ['Georgia','Armenia','Azerbaijan'].includes(f.properties.NAME)));
+ const found=original.features.filter(f=>f.properties.NAME===name || (owner==='rus' && ['Finland','Georgia','Armenia','Azerbaijan'].includes(f.properties.NAME)));
  if(!found.length)throw new Error('Missing historical geometry '+name);
  const pieces=found.map(f=>clipping.intersection(f.geometry.coordinates,bounds)).filter(p=>p.length);
  const geom=clipping.union(...pieces);

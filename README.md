@@ -2,6 +2,10 @@
 
 A functioning observer strategy simulation: 22 autonomous governments, 66 strategic regions, weekly diplomacy and combat, persistent saves, a historical SVG map, and Cloudflare Workers AI with deterministic fallback.
 
+Production: https://ai-diplomacy-1914.wik-speck.workers.dev — frontend assets, authoritative API, Workers AI and persistent D1 saves run on Cloudflare.
+
+Use **Next round** for one week or **Autoplay** for consecutive rounds. The backend records actual movement routes and events; the frontend plays them back before starting another round. Neutral **Alliances** shows signed treaty networks regardless of selection; **Relations** uses the selected nation's perspective. Zoom reveals formations, cities and regional details. Dispatch cards highlight actual threats, alliances, wars and peace agreements. Finland's separate upstream geometry is included in Russian territory.
+
 ## Run locally
 
 Requires Node.js 22.12+ and npm (tested with Node 24.11).
@@ -16,7 +20,7 @@ Open **http://127.0.0.1:8787**. The local Worker serves the production frontend 
 
 For frontend hot reload, keep the Worker running and run `npm run dev` in another terminal. Open http://127.0.0.1:5173; Vite proxies `/api` to the Worker.
 
-Use Next Turn to finish one week or Play to continue. Pause finishes the in-progress week. Select nations and regions, inspect army attributes, diplomacy and numerical battle reports, change map modes, drag to pan and scroll to zoom. Save creates a manual snapshot; Load offers it and the latest 20 completed weeks. The backend also persists partial turn progress, so refresh resumes unfinished work. Restart returns the current game to its initial seed and retains snapshots.
+Use Next round to finish one week or Autoplay to continue. Pause finishes the in-progress week. Select nations and regions, inspect army attributes, diplomacy and numerical battle reports, change map modes, drag to pan and scroll to zoom. Save creates a manual snapshot; Load offers it and the latest 20 completed weeks. The backend also persists partial turn progress, so refresh resumes unfinished work. Restart returns the current game to its initial seed and retains snapshots.
 
 ## Deploy on Cloudflare
 
@@ -36,7 +40,7 @@ npx wrangler deploy
 
 The config also supports Wrangler automatic resource provisioning without `database_id`, but creating D1 explicitly lets you apply the schema before the first request. Deploy the production config, not `wrangler.local.jsonc`. Credentials stay in Wrangler/Cloudflare; no frontend key is needed. Do not commit `.dev.vars`, `.env` or API tokens.
 
-Inference calls `env.AI.run()` server-side. The default model is `@cf/zai-org/glm-4.7-flash`. Change the model in the dialog for existing saves, or `AI_MODEL` for new saves. To test real inference locally after authenticating, run `npx wrangler dev --var LOCAL_AI_ENABLED:true` with the production config; this makes real, potentially billable account calls.
+Inference calls `env.AI.run()` server-side. The default model is `@cf/zai-org/glm-4.7-flash`, with thinking disabled and JSON output constrained to the decision schema. Public prose is clipped to display limits; actions retain strict validation. Change the model in the dialog for existing saves, or `AI_MODEL` for new saves. To test real inference locally after authenticating, run `npx wrangler dev --var LOCAL_AI_ENABLED:true` with the production config; this makes real, potentially billable account calls. See the [Cloudflare GLM input parameters](https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/).
 
 **GLM-4.7-Flash requires a paid Workers plan as of July 28, 2026.** Its availability is not a free-tier guarantee. Access denial/quota failures switch visibly to deterministic AI. See [Cloudflare's model plan notice](https://developers.cloudflare.com/changelog/post/2026-07-28-models-require-workers-paid/) and [current Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/). Select a model your account supports or set the call budget to zero. Workers, D1 and Static Assets have free allowances; unlimited free use is not promised. This application cannot query remaining daily Neuron quota.
 

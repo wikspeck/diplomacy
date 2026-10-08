@@ -4,6 +4,8 @@ let cookie='';let current;
 async function call(path,body){const res=await fetch(base+'/api/'+path,{method:body?'POST':'GET',headers:{...(cookie?{Cookie:cookie}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const set=res.headers.get('set-cookie');if(set)cookie=set.split(';')[0];return {status:res.status,data:await res.json()};}
 let result=await call('state');assert.equal(result.status,200);current=result.data;assert.equal(Object.keys(current.state.countries).length,22);
 let reply=await call('restart',{version:current.version,seed:91});assert.equal(reply.status,200);current=reply.data;
+// Remote integration checks use rule-based mode; real inference is verified separately.
+if(!base.includes('127.0.0.1')&&!base.includes('localhost')){reply=await call('settings',{version:current.version,settings:{...current.state.settings,callBudget:0}});assert.equal(reply.status,200);current=reply.data;}
 const initial=current.version;
 reply=await call('step',{version:initial});assert.equal(reply.status,200);current=reply.data;assert.ok(current.state.progress);const progressed=current.state.progress.index;
 reply=await call('step',{version:initial});assert.equal(reply.status,200);assert.equal(reply.data.version,current.version);assert.equal(reply.data.state.progress.index,progressed);assert.equal(reply.data.conflict,true);
@@ -18,4 +20,4 @@ reply=await call('load',{version:current.version,slot:'manual'});assert.equal(re
 const invalid=await call('settings',{version:current.version,settings:{...current.state.settings,llmCountries:['fabricated']}});assert.equal(invalid.status,400);
 const other=await fetch(base+'/api/state').then(r=>r.json());assert.equal(other.state.turn,0);
 const crossOrigin=await fetch(base+'/api/step',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({version:current.version})});assert.equal(crossOrigin.status,403);
-console.log('PASS: API boot, 22 nations, resumable turn, stale retry, concurrent step exclusion, local fallback labeling, D1 manual and automatic snapshots, exact load, invalid settings, session isolation, origin checks.');
+console.log('PASS: API boot, 22 nations, resumable turn, stale retry, concurrent step exclusion, deterministic fallback labeling, D1 manual and automatic snapshots, exact load, invalid settings, session isolation, origin checks.');

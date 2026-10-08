@@ -1,0 +1,13 @@
+import {describe,it,expect} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {createGame} from '../shared/seed';
+import {beginTurn,resolveTurn} from '../shared/engine';
+import {fallback} from '../shared/ai';
+import {allianceNetworks,dispatches,headline} from '../src/presentation';
+function inside(point:number[],ring:number[][]){let contained=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a[1]>point[1])!==(b[1]>point[1])&&point[0]<(b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0])contained=!contained;}return contained;}
+describe('historical atlas and turn presentation',()=>{
+ it('includes mainland Finland in Russian imperial geometry, rather than water',()=>{const geo=JSON.parse(readFileSync(new URL('../public/data/europe-regions.geojson',import.meta.url),'utf8'));const russia=geo.countryFeatures.find((f:{properties:{owner:string}})=>f.properties.owner==='rus');for(const point of [[25.5,62],[27,64],[27,67]])expect(russia.geometry.coordinates.some((p:number[][][])=>inside(point,p[0])&&!p.slice(1).some(r=>inside(point,r)))).toBe(true);expect(createGame().regions.helsinki.owner).toBe('rus');});
+ it('neutral alliance networks include all signed partners and exclude non-allied countries',()=>{const s=createGame();s.treaties=[{a:'ger',b:'auh',type:'alliance'},{a:'fra',b:'rus',type:'alliance'},{a:'gbr',b:'fra',type:'alliance'},{a:'ita',b:'ger',type:'access'}];const groups=allianceNetworks(s);expect(groups.map(g=>[...g.members].sort()).sort()).toEqual([['auh','ger'],['fra','gbr','rus']]);expect(groups[0].color).not.toBe(groups[1].color);s.countries.ger.plan='Selecting another nation has no effect';expect(allianceNetworks(s)).toEqual(groups);});
+ it('records actual authoritative movement routes only on completed rounds',()=>{const s=createGame();beginTurn(s);expect(s.playback).toBeUndefined();for(const c of s.progress!.countries)s.progress!.decisions[c]=fallback(s,c);resolveTurn(s);expect(s.playback!.turn).toBe(s.turn);expect(s.playback!.movements.length).toBeGreaterThan(0);for(const m of s.playback!.movements){expect([...s.regions[m.from].neighbors,...s.regions[m.from].seaNeighbors]).toContain(m.to);expect(s.countries[m.country]).toBeDefined();}expect(JSON.parse(JSON.stringify(s)).playback).toEqual(s.playback);});
+ it('prioritizes significant dispatches and renders threat headlines without invented events',()=>{const s=createGame();const e={id:'threat',turn:1,type:'diplomacy',text:'Germany → Austria-Hungary: ultimatum'};expect(headline(e)).toBe('Germany threatens Austria-Hungary');expect(dispatches([e,{...e,id:'peace',type:'peace',text:'Peace signed.'},{...e,id:'move',type:'movement'}]).map(e=>e.id)).toEqual(['peace','threat']);expect(dispatches(s.events)).toHaveLength(0);});
+});

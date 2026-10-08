@@ -1,6 +1,7 @@
 import type {GameState,Decision,Army,DiplomaticAction} from './types';
 export function random(s:GameState){s.rng=(Math.imul(s.rng,1664525)+1013904223)>>>0;return s.rng/4294967296;}
 export function event(s:GameState,type:string,text:string,region?:string,country?:string,details?:string){s.events.push({id:`e${s.nextId++}`,turn:s.turn+1,type,text,region,country,details});}
+function movement(s:GameState,a:Army,to:string,kind:'move'|'attack'|'retreat'){s.playback?.movements.push({armyId:a.id,country:a.country,from:a.region,to,kind});a.region=to;}
 export function atWar(s:GameState,a:string,b:string){return s.wars.some(w=>w.includes(a)&&w.includes(b));}
 export function allied(s:GameState,a:string,b:string){return s.treaties.some(t=>t.type==='alliance'&&[t.a,t.b].includes(a)&&[t.a,t.b].includes(b));}
 export function strength(s:GameState,c:string){return s.armies.filter(a=>a.country===c).reduce((n,a)=>n+a.strength,0);}
@@ -51,7 +52,7 @@ export function military(s:GameState,c:string,a:Decision['militaryActions'][numb
    army.order=`Attacking ${target.name}`;army.entrenchment=0;combat(s,army,target.id);return;
   }
   if(!canAccess(s,c,target.controller)){reject(s,c,'Movement requires friendly territory or military access.');return;}
-  army.region=target.id;army.entrenchment=0;army.organization=Math.max(10,army.organization-(sea?20:7));army.order=`${a.type==='retreat'?'Retreated':'Moved'} to ${target.name}`;event(s,'movement',`${s.countries[c].short}: ${army.id} moves to ${target.name}.`,target.id,c);return;
+  movement(s,army,target.id,a.type==='retreat'?'retreat':'move');army.entrenchment=0;army.organization=Math.max(10,army.organization-(sea?20:7));army.order=`${a.type==='retreat'?'Retreated':'Moved'} to ${target.name}`;event(s,'movement',`${s.countries[c].short}: ${army.id} moves to ${target.name}.`,target.id,c);return;
  }
  if(a.type==='reinforce'){const n=Math.min(15,100-army.strength,s.countries[c].manpower,s.countries[c].treasury/2);if(n>0){army.strength+=n;s.countries[c].manpower-=n;s.countries[c].treasury-=n*2;}return;}
  if(a.type==='entrench'||a.type==='defend'){army.entrenchment=Math.min(50,army.entrenchment+10);army.organization=Math.min(100,army.organization+10);army.order='Entrenching';return;}
@@ -66,12 +67,14 @@ export function combat(s:GameState,attacker:Army,targetId:string){
  const win=offense>defense;const attackerLoss=defenders.length?Math.min(attacker.strength*0.65,4+defense*0.16):1;
  attacker.strength=Math.max(0,attacker.strength-attackerLoss);attacker.organization=Math.max(5,attacker.organization-22);attacker.morale=Math.max(10,attacker.morale+(win?5:-10));attacker.experience=Math.min(100,attacker.experience+5);
  let defenderLoss=0;
- for(const d of defenders){const loss=Math.min(d.strength*0.75,3+offense*0.2/defenders.length);d.strength-=loss;d.organization=Math.max(5,d.organization-25);d.entrenchment=Math.max(0,d.entrenchment-10);defenderLoss+=loss;if(win){const retreat=region.neighbors.find(id=>s.regions[id].controller===d.country&&id!==attacker.region);if(retreat){d.region=retreat;d.order='Retreating after defeat';}else{defenderLoss+=d.strength;d.strength=0;}}}
- if(win&&attacker.strength>0){region.controller=attacker.country;attacker.region=targetId;event(s,'territory',`${s.countries[attacker.country].short} occupies ${region.name}.`,targetId,attacker.country);}
+ for(const d of defenders){const loss=Math.min(d.strength*0.75,3+offense*0.2/defenders.length);d.strength-=loss;d.organization=Math.max(5,d.organization-25);d.entrenchment=Math.max(0,d.entrenchment-10);defenderLoss+=loss;if(win){const retreat=region.neighbors.find(id=>s.regions[id].controller===d.country&&id!==attacker.region);if(retreat){movement(s,d,retreat,'retreat');d.order='Retreating after defeat';}else{defenderLoss+=d.strength;d.strength=0;}}}
+ if(win&&attacker.strength>0){region.controller=attacker.country;movement(s,attacker,targetId,'attack');event(s,'territory',`${s.countries[attacker.country].short} occupies ${region.name}.`,targetId,attacker.country);}
  event(s,'battle',`Battle of ${region.name}: ${win?'attacker advances':'defenders hold'}.`,targetId,attacker.country,`Attack power ${offense.toFixed(1)} · defense ${defense.toFixed(1)} · ${region.terrain} ×${terrain}. Strength losses: attacker ${attackerLoss.toFixed(1)}, defenders ${defenderLoss.toFixed(1)}. Organization, morale, experience, supply and entrenchment modify power. Seeded combat roll.`);
 }
 export function resolveTurn(s:GameState){
  if(!s.progress)throw new Error('No turn in progress');
+ const eventStart=s.events.length;
+ s.playback={turn:s.turn+1,movements:[],events:[]};
  const decisions=s.progress.decisions;
  // Stable initiative rotates each week; no country receives permanent first-mover advantage.
  const ids=s.progress.countries;const order=[...ids.slice(s.turn%ids.length),...ids.slice(0,s.turn%ids.length)];
@@ -81,6 +84,7 @@ export function resolveTurn(s:GameState){
  }
  economy(s);capitulations(s);
  for(const c of Object.values(s.countries)){c.memory=s.events.filter(e=>e.country===c.id||e.text.includes(c.short)).slice(-4).map(e=>e.text);}
+ s.playback.events=s.events.slice(eventStart);
  s.turn++;s.date=new Date(Date.UTC(1914,0,1)+s.turn*7*86400000).toISOString().slice(0,10);s.progress=null;s.tension=Math.max(0,s.tension-(s.wars.length?0:1));
  s.events=s.events.slice(-500);s.messages=s.messages.slice(-250);s.decisions=s.decisions.slice(-150);s.armies=s.armies.filter(a=>a.strength>0.5);s.treaties=s.treaties.filter(t=>!t.expires||t.expires>s.turn);
  for(const m of s.messages)if(m.status==='pending'&&s.turn-m.turn>8)m.status='rejected';

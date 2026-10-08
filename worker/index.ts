@@ -2,6 +2,7 @@ import {createGame} from '../shared/seed';
 import {beginTurn,resolveTurn} from '../shared/engine';
 import {agentView,fallback} from '../shared/ai';
 import {decisionSchema,settingsSchema} from '../shared/validation';
+import {z} from 'zod';
 import type {GameState,Decision} from '../shared/types';
 interface Row {state:string;version:number;lease_until:number;}
 function response(data:unknown,status=200,cookie?:string){const headers=new Headers({'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});if(cookie)headers.set('Set-Cookie',cookie);return new Response(JSON.stringify(data),{status,headers});}
@@ -16,12 +17,18 @@ export async function choose(s:GameState,c:string,env:Env,local:boolean):Promise
  try{
   const messages=[{role:'system' as const,content:'You control one country in a seeded 1914 strategy simulation. Other countries\' private plans are unavailable. Return only JSON: {"explanation":"short public strategic summary, never private reasoning","diplomaticActions":[{"type":"message|propose_alliance|accept|reject|ultimatum|guarantee|request_access|declare_war|offer_peace|demand_territory|ceasefire|break_treaty","target":"country ID","proposalId":"only for accept/reject","region":"only for demand","message":"optional"}],"militaryActions":[{"type":"move|attack|defend|retreat|reinforce|entrench|merge|split","armyId":"own ID","targetRegion":"adjacent ID for movement","otherArmyId":"for merge"}],"economicActions":[{"type":"recruit","region":"controlled home ID","amount":1}]}. Omit optional keys when unused. Budget: 2 diplomatic, 3 military (one per army), 1 economic action. Respect alliances, war, supply and borders. Agreements require a delivered proposal and independent acceptance. No naval invasions. Choose alternative-history strategies, not predetermined outcomes.'},{role:'user' as const,content}];
   // GLM uses chat-completion output; traditional models use {response}. Normalize both.
-  const result:unknown=await Promise.race([env.AI.run(s.settings.model as Parameters<Ai['run']>[0],{messages,max_tokens:s.settings.maxTokens,temperature:0.45}),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Inference exceeded the 25-second step budget')),25000);})]);
+  const parameters=s.settings.model==='@cf/zai-org/glm-4.7-flash'?{messages,max_completion_tokens:s.settings.maxTokens,temperature:0.45,chat_template_kwargs:{enable_thinking:false},response_format:{type:'json_schema' as const,json_schema:{name:'country_decision',schema:z.toJSONSchema(decisionSchema)}}}:{messages,max_tokens:s.settings.maxTokens,temperature:0.45};
+  const result:unknown=await Promise.race([env.AI.run(s.settings.model as Parameters<Ai['run']>[0],parameters),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Inference exceeded the 25-second step budget')),25000);})]);
   const output=result as {response?:unknown;choices?:{message:{content:string}}[];usage?:{prompt_tokens?:number;completion_tokens?:number}};
   const raw=output.response??output.choices?.[0]?.message.content;
+  s.usage.inputTokens+=output.usage?.prompt_tokens??0;s.usage.outputTokens+=output.usage?.completion_tokens??0;
+  if(raw==null||raw==='')throw new Error('Model returned no decision within its output budget.');
   const parsed=typeof raw==='string'?JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')):raw;
+  // Public prose is display-only. Clip it without modifying or relaxing action validation.
+  if(parsed&&typeof parsed==='object'&&typeof parsed.explanation==='string')parsed.explanation=parsed.explanation.slice(0,280);
+  if(Array.isArray(parsed?.diplomaticActions))for(const action of parsed.diplomaticActions)if(typeof action?.message==='string')action.message=action.message.slice(0,240);
   const decision=decisionSchema.parse(parsed);
-  s.usage.inputTokens+=output.usage?.prompt_tokens??0;s.usage.outputTokens+=output.usage?.completion_tokens??0;s.usage.status='Workers AI connected';
+  s.usage.status='Workers AI connected';
   return {decision,source:'llm'};
  }catch(err){s.usage.failed++;const error=err instanceof Error?err.message:'Inference failed';s.usage.status='Fallback active · AI request failed';s.usage.cooldownUntil=Date.now()+5*60*1000;return {decision:fallback(s,c),source:'fallback',error:error.slice(0,200)};}finally{clearTimeout(timeout);}
 }
